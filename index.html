@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Rolling-Code Speech Scrambler (WAV)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{--bg:#f4f3ee;--fg:#1c1c1a;--card:#fff;--mut:#6c6a62;--ac:#b4421f;--ac2:#fbe9e2;--bd:#dedbd0;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141412;--fg:#ece9e0;--card:#1e1e1b;--mut:#9b988d;--ac:#ff8a5c;--ac2:#3a2a22;--bd:#34332e}}
+:root[data-theme="dark"]{--bg:#141412;--fg:#ece9e0;--card:#1e1e1b;--mut:#9b988d;--ac:#ff8a5c;--ac2:#3a2a22;--bd:#34332e}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:720px;margin:0 auto;padding:22px 16px 48px}
+header{margin-bottom:18px}
+h1{font:700 19px/1.2 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.06em;margin:0 0 4px}
+header p{margin:0;color:var(--mut);font-size:13px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.card>h2{display:flex;align-items:center;gap:8px;font:600 12px/1 ui-monospace,Menlo,monospace;text-transform:uppercase;letter-spacing:.12em;color:var(--mut);margin:0 0 12px}
+.card>h2 .n{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--ac);color:#fff;font-size:11px;letter-spacing:0}
+.card>h2 .sp{flex:1}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+@media(max-width:520px){.g2,.g3{grid-template-columns:1fr}}
+label.l{display:block;font-size:12px;color:var(--mut);margin-bottom:4px}
+input[type=number],input[type=text]{font:inherit;padding:8px 10px;width:100%;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--fg)}
+input:focus-visible,button:focus-visible,.seg input:focus-visible+span{outline:2px solid var(--ac);outline-offset:1px}
+.seg{display:flex;border:1px solid var(--bd);border-radius:8px;overflow:hidden}
+.seg label{flex:1;position:relative;cursor:pointer}
+.seg input{position:absolute;opacity:0}
+.seg span{display:block;text-align:center;padding:8px 0;font-size:13px;border-right:1px solid var(--bd);background:var(--bg)}
+.seg label:last-child span{border-right:0}
+.seg input:checked+span{background:var(--ac);color:#fff;font-weight:600}
+.chk{display:flex;align-items:center;gap:8px;height:38px;font-size:14px;cursor:pointer}
+.chk input{width:18px;height:18px;accent-color:var(--ac)}
+button,input[type=file]::file-selector-button{font:inherit;font-size:14px;padding:8px 14px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--fg);cursor:pointer}
+button:hover:not(:disabled){border-color:var(--ac)}
+button:disabled{opacity:.4;cursor:default}
+button.primary{background:var(--ac);color:#fff;border-color:var(--ac);font-weight:600}
+button.sm{padding:5px 10px;font-size:12px}
+input[type=file]{font-size:13px;max-width:100%}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.info{white-space:pre-wrap;margin-top:12px;padding:8px 10px;border-radius:8px;background:var(--ac2);font:12px/1.5 ui-monospace,Menlo,monospace}
+.info.err{color:#c0281a;font-weight:600}
+.st{margin-top:10px;font:12px/1.5 ui-monospace,Menlo,monospace;color:var(--mut);min-height:1.5em;white-space:pre-wrap}
+canvas{display:block;width:100%;border-radius:8px;border:1px solid var(--bd);image-rendering:pixelated}
+.pw{position:relative;margin-top:10px}
+#map{margin-top:10px}
+.cur{position:absolute;top:1px;bottom:1px;width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.65);pointer-events:none}
+.cur.hide{display:none}
+canvas.hide{display:none}
+.bar{height:8px;border-radius:4px;background:var(--bd);overflow:hidden;margin-top:12px}
+.bar i{display:block;height:100%;width:0;background:var(--ac)}
+.bar.hide{display:none}
+.st.err{color:#c0281a;font-weight:600}
+.cap{font-size:11px;color:var(--mut);margin-top:6px}
+</style></head><body><main>
+<header>
+  <h1>PARKHILL-STYLE SCRAMBLER</h1>
+  <p>Rolling-code spectral scrambler. Accepts 8&nbsp;kHz WAV files only (no resampling). MDCT bands are shuffled (and optionally flipped) every frame. Key and parameters must match on both sides.</p>
+</header>
+
+<section class="card">
+  <h2><span class="n">1</span>Key</h2>
+  <label class="l" for="key">Key (digits only, length limited by the parameters below)</label>
+  <input id="key" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" value="123456">
+  <div class="row"><button type="button" id="randKey" class="sm">Random key</button></div>
+  <div class="info" id="kinfo"></div>
+</section>
+
+<section class="card">
+  <h2><span class="n">2</span>Parameters<span class="sp"></span><button type="button" id="reset" class="sm">Reset to defaults</button></h2>
+  <label class="l">Frame size (samples)</label>
+  <div class="seg" role="radiogroup" aria-label="Frame size">
+    <label><input type="radio" name="frame" value="64"><span>64</span></label>
+    <label><input type="radio" name="frame" value="128"><span>128</span></label>
+    <label><input type="radio" name="frame" value="256" checked><span>256</span></label>
+    <label><input type="radio" name="frame" value="512"><span>512</span></label>
+    <label><input type="radio" name="frame" value="1024"><span>1024</span></label>
+  </div>
+  <div class="g3" style="margin-top:12px">
+    <div><label class="l" for="bands">Number of bands</label><input id="bands" type="number" min="2" max="64" step="1" value="8" inputmode="numeric"></div>
+    <div><label class="l" for="hold">Frames per code</label><input id="hold" type="number" min="1" max="1000" step="1" value="1" inputmode="numeric"></div>
+    <div><label class="l">Band flip</label><label class="chk"><input id="flip" type="checkbox" checked>Invert some bands</label></div>
+  </div>
+  <div class="info" id="info"></div>
+  <canvas id="map" height="180" aria-label="Key schedule preview"></canvas>
+  <div class="cap">Key schedule, first 48 frames: rows are output bands (low at bottom), colour shows which input band lands there, a slash marks a flipped band.</div>
+</section>
+
+<section class="card">
+  <h2><span class="n">3</span>Scramble</h2>
+  <input type="file" id="scIn" accept="audio/wav,audio/x-wav,.wav">
+  <div class="row">
+    <button class="primary" id="scrambleBtn" disabled>Scramble</button>
+    <button id="scPlay" disabled>Play</button>
+    <button id="scDl" disabled>Download scrambled.wav</button>
+  </div>
+  <div class="bar hide" id="scBar"><i></i></div>
+  <div class="st" id="scSt">Choose a WAV file.</div>
+  <div class="pw"><canvas id="scCv" class="hide" aria-label="Scrambled spectrogram"></canvas><div class="cur hide" id="scLine"></div></div>
+</section>
+
+<section class="card">
+  <h2><span class="n">4</span>Descramble</h2>
+  <input type="file" id="dsIn" accept="audio/wav,audio/x-wav,.wav">
+  <div class="row">
+    <button class="primary" id="descrambleBtn" disabled>Descramble</button>
+    <button id="dsPlay" disabled>Play</button>
+    <button id="dsDl" disabled>Download descrambled.wav</button>
+  </div>
+  <div class="bar hide" id="dsBar"><i></i></div>
+  <div class="st" id="dsSt">Choose a scrambled WAV file.</div>
+  <div class="pw"><canvas id="dsCv" class="hide" aria-label="Descrambled spectrogram"></canvas><div class="cur hide" id="dsLine"></div></div>
+</section>
+</main>
+<script>
+
+
+const FS = 8000;
+const $ = id => document.getElementById(id);
+
+// ---------- FFT (radix-2, cached per size) ----------
+const FT = new Map();
+function fftTab(M) {
+  let t = FT.get(M);
+  if (t) return t;
+  const bits = Math.round(Math.log2(M)), rev = new Uint32Array(M), c = new Float64Array(M / 2), s = new Float64Array(M / 2);
+  for (let i = 1; i < M; i++) rev[i] = (rev[i >> 1] >> 1) | ((i & 1) << (bits - 1));
+  for (let k = 0; k < M / 2; k++) { c[k] = Math.cos(-2 * Math.PI * k / M); s[k] = Math.sin(-2 * Math.PI * k / M); }
+  FT.set(M, t = { rev, c, s });
+  return t;
+}
+function fft(re, im) { // forward, in place
+  const M = re.length, { rev, c, s } = fftTab(M);
+  for (let i = 0; i < M; i++) {
+    const j = rev[i];
+    if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+  }
+  for (let len = 2; len <= M; len <<= 1) {
+    const half = len >> 1, step = M / len;
+    for (let i = 0; i < M; i += len)
+      for (let j = 0, k = 0; j < half; j++, k += step) {
+        const a = i + j, b = a + half, wr = c[k], wi = s[k];
+        const tr = re[b] * wr - im[b] * wi, ti = re[b] * wi + im[b] * wr;
+        re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+      }
+  }
+}
+// ---------- MDCT via one 2N-point FFT per frame (sine window, orthonormal TDAC) ----------
+// X[k] = sqrt(2/N) * sum_n w[n] x[n] cos(pi/N (n + 1/2 + N/2)(k + 1/2))
+function buildTables(n) {
+  const M = 2 * n, n0 = 0.5 + n / 2;
+  W = new Float32Array(M);
+  const t = T = { sc: Math.sqrt(2 / n), pc: new Float64Array(M), ps: new Float64Array(M), qc: new Float64Array(n), qs: new Float64Array(n),
+                  rc: new Float64Array(n), rs: new Float64Array(n), c2: new Float64Array(M), s2: new Float64Array(M),
+                  re: new Float64Array(M), im: new Float64Array(M) };
+  for (let i = 0; i < M; i++) {
+    W[i] = Math.sin(Math.PI * (i + 0.5) / M);
+    t.pc[i] = Math.cos(Math.PI * i / M); t.ps[i] = -Math.sin(Math.PI * i / M);
+    t.c2[i] = Math.cos(Math.PI * (i + n0) / M); t.s2[i] = Math.sin(Math.PI * (i + n0) / M);
+  }
+  for (let k = 0; k < n; k++) {
+    t.qc[k] = Math.cos(Math.PI * n0 * (k + 0.5) / n); t.qs[k] = -Math.sin(Math.PI * n0 * (k + 0.5) / n);
+    t.rc[k] = Math.cos(Math.PI * n0 * k / n); t.rs[k] = Math.sin(Math.PI * n0 * k / n);
+  }
+  fftTab(M);
+}
+
+// ---------- parameters (must be identical on both sides) ----------
+let N = 0, G = 0, NG = 0, NB = 0, B0 = 0, FLIP = true, HOLD = 1;
+let W, T;
+function intParam(id, lo, hi, name) {
+  const v = Number($(id).value);
+  if (!Number.isInteger(v) || v < lo || v > hi) throw new Error(`${name} must be an integer ${lo}–${hi}`);
+  return v;
+}
+function readParams() {
+  const n = Number(document.querySelector("input[name=frame]:checked").value);
+  const ng = intParam("bands", 2, 64, "Bands"), hold = intParam("hold", 1, 1000, "Frames per code");
+  const g = Math.floor(n / ng);
+  if (g < 1) throw new Error(`Too many bands for this frame size (max ${n})`);
+  return { n, ng, g, b0: 0, hold, flip: $("flip").checked };
+}
+function applyParams() {
+  const q = readParams();
+  if (q.n !== N) { N = q.n; buildTables(N); }
+  NG = q.ng; G = q.g; B0 = q.b0; NB = NG * G; HOLD = q.hold; FLIP = q.flip;
+  initCode();
+}
+function describe() {
+  const df = FS / 2 / N, left = N - NB;
+  return `${NG} bands × ${G} bins (${(G * df).toFixed(1)} Hz each) · frame ${N} samples (${(N / FS * 1000).toFixed(0)} ms) · ` +
+    (HOLD === 1 ? "new code every frame" : `code held for ${HOLD} frames`) + ` · band flip ${FLIP ? "on" : "off"}` +
+    (left ? ` · top ${left} bins (${(left * df).toFixed(0)} Hz) left in place` : "");
+}
+
+// ---------- rolling code ----------
+// One code = one (band permutation, flip mask) pair, numbered 0..P-1 with
+// P = NG! * 2^NG (or NG! with flip off). The key is the starting code number.
+// The code then advances by a full-period LCG mod P, so every code is visited
+// exactly once per P steps and the key space equals the code space.
+let P = 1n, FACT = [1n], LA = 1n, LC = 1n;
+function initCode() {
+  FACT = [1n];
+  for (let i = 1; i <= NG; i++) FACT.push(FACT[i - 1] * BigInt(i));
+  P = FACT[NG] * (FLIP ? 1n << BigInt(NG) : 1n);
+  let rad = 1n;
+  for (let q = 2; q <= NG; q++) { let pr = true; for (let d = 2; d * d <= q; d++) if (q % d === 0) { pr = false; break; } if (pr) rad *= BigInt(q); }
+  // Hull-Dobell: a-1 divisible by every prime factor of P (and by 4); c coprime to P.
+  LA = (1n + 2n * rad * 0x9E3779B97F4A7C15n) % P;
+  LC = 0x1FFFFFFFFFFFFFFFn % P; // 2^61-1 is prime and larger than any prime factor of P
+}
+const nextState = s => (LA * s + LC) % P;
+function frameMap(s) {
+  let r = s % FACT[NG], q = s / FACT[NG];
+  const pool = [...Array(NG).keys()], p = [];
+  for (let i = NG; i >= 1; i--) {
+    const j = Number(r / FACT[i - 1]);
+    r %= FACT[i - 1];
+    p.push(pool.splice(j, 1)[0]);
+  }
+  const fl = p.map((_, d) => FLIP && ((q >> BigInt(d)) & 1n) === 1n);
+  return [p, fl];
+}
+function getKey() {
+  const s = $("key").value.trim();
+  if (!/^\d+$/.test(s)) throw new Error("Key must be a non-negative integer");
+  const k = BigInt(s);
+  if (k >= P) throw new Error("Key is outside the key space for these parameters");
+  return k;
+}
+const digits = v => v.toString().length;
+function limitKey() { // keep only digits and trim until the key fits the current key space
+  const el = $("key"), before = el.value;
+  const s0 = before.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+  let s = s0;
+  while (s.length > 1 && BigInt(s) >= P) s = s.slice(0, -1);
+  el.maxLength = digits(P - 1n);
+  if (s !== before) el.value = s;
+  return s !== s0; // true when digits had to be dropped
+}
+function fmtBig(v) {
+  const s = v.toString();
+  return s.length <= 15 ? Number(v).toLocaleString("en-US") : `${s[0]}.${s.slice(1, 4)}×10^${s.length - 1}`;
+}
+function keyInfo() {
+  const s = P.toString(), lead = Number(s.slice(0, 15)) / 10 ** (Math.min(15, s.length) - 1);
+  const bits = ((s.length - 1) + Math.log10(lead)) * Math.log2(10);
+  return `Possibilities per frame: ${NG}!${FLIP ? " × 2^" + NG : ""} = ${fmtBig(P)} (${bits.toFixed(1)} bits)\n` +
+    `Key space: 0 – ${fmtBig(P - 1n)} · up to ${digits(P - 1n)} digit${digits(P - 1n) > 1 ? "s" : ""}` +
+    (HOLD > 1 ? `\nCode sequence repeats after ${fmtBig(P * BigInt(HOLD))} frames` : `\nCode sequence repeats after ${fmtBig(P)} frames`);
+}
+// Permute the NG bands (G bins each) starting at bin B0; all other bins pass through.
+function remap(src, dst, p, fl, inv) {
+  dst.set(src);
+  for (let d = 0; d < NG; d++)
+    for (let j = 0; j < G; j++) {
+      const s = B0 + p[d] * G + (fl[d] ? G - 1 - j : j), t = B0 + d * G + j;
+      if (inv) dst[s] = src[t]; else dst[t] = src[s];
+    }
+}
+const yieldUI = () => new Promise(r => setTimeout(r, 0));
+async function mdctRun(x, ks, inv, prog) {
+  const K = x.length / N - 1, M = 2 * N, y = new Float32Array(x.length), X = new Float32Array(N), Y = new Float32Array(N);
+  const { sc, pc, ps, qc, qs, rc, rs, c2, s2, re, im } = T;
+  let last = performance.now(), st = ks;
+  for (let f = 0; f < K; f++) {
+    const o = f * N;
+    for (let n = 0; n < M; n++) { const v = W[n] * x[o + n]; re[n] = v * pc[n]; im[n] = v * ps[n]; }
+    fft(re, im);
+    for (let k = 0; k < N; k++) X[k] = sc * (re[k] * qc[k] - im[k] * qs[k]);
+    if (f && f % HOLD === 0) st = nextState(st);
+    const [p, fl] = frameMap(st);
+    remap(X, Y, p, fl, inv);
+    for (let k = 0; k < N; k++) { re[k] = Y[k] * rc[k]; im[k] = -Y[k] * rs[k]; }
+    re.fill(0, N); im.fill(0, N);
+    fft(re, im);
+    for (let n = 0; n < M; n++) y[o + n] += W[n] * sc * (c2[n] * re[n] + s2[n] * im[n]);
+    if (prog && performance.now() - last > 30) { prog(f / K); await yieldUI(); last = performance.now(); }
+  }
+  if (prog) prog(1);
+  return y;
+}
+// Unity-gain path: the MDCT is orthonormal, so scramble->descramble restores the
+// original level exactly. Only guard against clipping (scale down if peak > 0.98).
+function guard(y) {
+  let m = 0;
+  for (const v of y) m = Math.max(m, Math.abs(v));
+  let g = 1;
+  if (m > 0.98) { g = 0.98 / m; for (let i = 0; i < y.length; i++) y[i] *= g; }
+  y.gain = g;
+  return y;
+}
+async function scramble(x, ks, prog) {
+  const K = Math.ceil(x.length / N) + 1, xp = new Float32Array((K + 1) * N);
+  xp.set(x, N);
+  return guard(await mdctRun(xp, ks, false, prog));
+}
+async function descramble(p, ks, prog) {
+  return guard((await mdctRun(p, ks, true, prog)).slice(N));
+}
+
+// ---------- audio utils ----------
+let _ctx;
+const actx = () => {
+  _ctx = _ctx || new (window.AudioContext || window.webkitAudioContext)();
+  if (_ctx.state === "suspended") _ctx.resume();
+  return _ctx;
+};
+function toWav(a) {
+  const d = new DataView(new ArrayBuffer(44 + a.length * 2));
+  const w = (o, s) => [...s].forEach((c, i) => d.setUint8(o + i, c.charCodeAt(0)));
+  w(0, "RIFF"); d.setUint32(4, 36 + a.length * 2, true); w(8, "WAVEfmt ");
+  d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true);
+  d.setUint32(24, FS, true); d.setUint32(28, FS * 2, true); d.setUint16(32, 2, true);
+  d.setUint16(34, 16, true); w(36, "data"); d.setUint32(40, a.length * 2, true);
+  for (let i = 0; i < a.length; i++)
+    d.setInt16(44 + i * 2, Math.max(-1, Math.min(1, a[i])) * 32767, true);
+  return new Uint8Array(d.buffer);
+}
+function download(name, a) {
+  const wav = toWav(a);
+  const u = URL.createObjectURL(new Blob([wav], { type: "audio/wav" }));
+  const a2 = document.createElement("a");
+  a2.href = u; a2.download = name; a2.click();
+  setTimeout(() => URL.revokeObjectURL(u), 5000);
+}
+
+// Direct RIFF/WAVE parser (PCM 8/16/24/32-bit or float32, any channel count -> mono).
+function parseWav(ab) {
+  const d = new DataView(ab);
+  if (ab.byteLength < 44 || d.getUint32(0) !== 0x52494646 || d.getUint32(8) !== 0x57415645) return null;
+  let o = 12, fmt = null, data = null;
+  while (o + 8 <= ab.byteLength) {
+    const id = d.getUint32(o), sz = d.getUint32(o + 4, true);
+    if (id === 0x666d7420) fmt = { tag: d.getUint16(o + 8, true), ch: d.getUint16(o + 10, true), sr: d.getUint32(o + 12, true), bits: d.getUint16(o + 22, true), at: o };
+    else if (id === 0x64617461) { data = [o + 8, Math.min(sz, ab.byteLength - o - 8)]; break; }
+    o += 8 + sz + (sz & 1);
+  }
+  if (!fmt || !data) return null;
+  let { tag, ch, sr, bits } = fmt;
+  if (tag === 0xFFFE) tag = d.getUint16(fmt.at + 8 + 24, true);
+  const bps = bits >> 3, n = ch ? Math.floor(data[1] / (bps * ch)) : 0;
+  if (!n || !(tag === 1 && [8, 16, 24, 32].includes(bits)) && !(tag === 3 && bits === 32)) return null;
+  const m = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    let s = 0;
+    for (let c = 0; c < ch; c++) {
+      const p = data[0] + (i * ch + c) * bps;
+      s += tag === 3 ? d.getFloat32(p, true) :
+           bits === 8 ? (d.getUint8(p) - 128) / 128 :
+           bits === 16 ? d.getInt16(p, true) / 32768 :
+           bits === 24 ? ((d.getUint8(p) | d.getUint8(p + 1) << 8 | d.getInt8(p + 2) << 16) / 8388608) :
+           d.getInt32(p, true) / 2147483648;
+    }
+    m[i] = s / ch;
+  }
+  return { m, sr };
+}
+async function loadWav(file) {
+  const p = parseWav(await file.arrayBuffer());
+  if (!p) throw new Error("Not a readable WAV file (need PCM 8/16/24/32-bit or 32-bit float).");
+  if (p.sr !== FS) throw new Error(`Rejected: sample rate is ${p.sr} Hz. Only ${FS} Hz WAV files are accepted.`);
+  if (p.m.length < FS / 4) throw new Error("Audio too short (minimum 0.25 s).");
+  return p.m;
+}
+
+// ---------- spectrogram ----------
+function heat(v) { // 0..1 -> rgb (dark blue -> teal -> yellow -> white)
+  const s = [[0, 12, 14, 38], [.35, 36, 90, 140], [.65, 220, 170, 60], [1, 255, 250, 235]];
+  for (let i = 1; i < s.length; i++) if (v <= s[i][0]) {
+    const t = (v - s[i - 1][0]) / (s[i][0] - s[i - 1][0]);
+    return [0, 1, 2].map(c => s[i - 1][c + 1] + t * (s[i][c + 1] - s[i - 1][c + 1]));
+  }
+  return s[3].slice(1);
+}
+function drawSpec(cv, a) {
+  const ctx = cv.getContext && cv.getContext("2d");
+  if (!ctx) return;
+  const NF = 256, cols = Math.min(640, Math.max(1, Math.floor((a.length - NF) / 64)));
+  cv.width = cols; cv.height = NF / 2;
+  const img = ctx.createImageData(cols, NF / 2), hop = (a.length - NF) / cols;
+  const win = Float32Array.from({ length: NF }, (_, i) => 0.5 - 0.5 * Math.cos(2 * Math.PI * i / NF));
+  const mag = [];
+  let mx = 1e-12;
+  for (let c = 0; c < cols; c++) {
+    const re = new Float64Array(NF), im = new Float64Array(NF), o = Math.floor(c * hop);
+    for (let i = 0; i < NF; i++) re[i] = (a[o + i] || 0) * win[i];
+    fft(re, im);
+    const m = new Float64Array(NF / 2);
+    for (let k = 0; k < NF / 2; k++) { m[k] = Math.log10(re[k] * re[k] + im[k] * im[k] + 1e-12) * 10; mx = Math.max(mx, m[k]); }
+    mag.push(m);
+  }
+  for (let c = 0; c < cols; c++)
+    for (let k = 0; k < NF / 2; k++) {
+      const v = Math.min(1, Math.max(0, (mag[c][k] - (mx - 70)) / 70));
+      const [r, g, b] = heat(v), p = ((NF / 2 - 1 - k) * cols + c) * 4;
+      img.data[p] = r; img.data[p + 1] = g; img.data[p + 2] = b; img.data[p + 3] = 255;
+    }
+  ctx.putImageData(img, 0, 0);
+}
+
+// ---------- key-schedule preview ----------
+function drawMap() {
+  const cv = $("map"), ctx = cv.getContext && cv.getContext("2d");
+  if (!ctx) return;
+  let ks;
+  try { ks = getKey(); } catch (e) { return; }
+  let st = ks;
+  const F = 48, cw = 12, rh = Math.max(3, Math.floor(180 / NG));
+  cv.width = F * cw; cv.height = NG * rh;
+  const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg") || "#fff";
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, cv.width, cv.height);
+  for (let f = 0; f < F; f++) {
+    if (f && f % HOLD === 0) st = nextState(st);
+    const [p, fl] = frameMap(st);
+    for (let d = 0; d < NG; d++) {
+      const y = (NG - 1 - d) * rh;
+      ctx.fillStyle = `hsl(${Math.round(p[d] * 360 / NG)},62%,52%)`;
+      ctx.fillRect(f * cw + 1, y + 1, cw - 2, rh - 2);
+      if (fl[d] && rh >= 6) {
+        ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(f * cw + 3, y + rh - 3); ctx.lineTo(f * cw + cw - 3, y + 3); ctx.stroke();
+      }
+    }
+  }
+}
+
+// ---------- UI ----------
+function refreshInfo() {
+  try {
+    applyParams();
+    const cut = limitKey();
+    $("info").textContent = describe(); $("info").classList.remove("err");
+    $("kinfo").textContent = keyInfo() + (cut ? "\nKey shortened to fit the key space." : "");
+    drawMap();
+  }
+  catch (e) { $("info").textContent = e.message; $("info").classList.add("err"); }
+}
+["bands", "hold", "flip", "key"].forEach(id => $(id).addEventListener("input", refreshInfo));
+document.querySelectorAll("input[name=frame]").forEach(r => r.addEventListener("change", refreshInfo));
+$("reset").onclick = () => {
+  document.querySelector("input[name=frame][value='256']").checked = true;
+  $("bands").value = 8; $("hold").value = 1; $("flip").checked = true;
+  refreshInfo();
+};
+$("randKey").onclick = () => {
+  const b = new Uint8Array(Math.ceil(P.toString(2).length / 8) + 8);
+  crypto.getRandomValues(b);
+  let v = 0n;
+  for (const x of b) v = (v << 8n) | BigInt(x);
+  $("key").value = (v % P).toString(); refreshInfo();
+};
+refreshInfo();
+
+let scAudio = null, dsAudio = null, cur = null; // cur: currently playing {btn, stop}
+const tick = () => new Promise(r => setTimeout(r, 20));
+
+function wire(p) {
+  const bar = $(p.bar), fill = bar.firstElementChild;
+  const setBar = v => { fill.style.width = (v * 100).toFixed(1) + "%"; };
+  let samples = null;
+  $(p.inp).onchange = async () => {
+    const f = $(p.inp).files[0];
+    if (p.halt) p.halt();
+    $(p.run).disabled = true; $(p.play).disabled = $(p.dl).disabled = true;
+    p.set(null); samples = null; bar.classList.add("hide"); $(p.cv).classList.add("hide"); $(p.st).classList.remove("err");
+    if (!f) { $(p.st).textContent = p.empty; return; }
+    $(p.st).textContent = "Reading…";
+    try {
+      samples = await loadWav(f);
+      $(p.st).textContent = `${f.name} — ${(samples.length / FS).toFixed(1)} s, ${FS} Hz. Ready.`;
+      $(p.run).disabled = false;
+    } catch (e) {
+      $(p.st).textContent = e.message || String(e); $(p.st).classList.add("err");
+    }
+  };
+  $(p.run).onclick = async () => {
+    if (!samples) return;
+    if (p.halt) p.halt();
+    $(p.st).classList.remove("err");
+    $(p.st).textContent = p.work; $(p.run).disabled = true; $(p.inp).disabled = true;
+    bar.classList.remove("hide"); setBar(0);
+    await tick();
+    try {
+      applyParams();
+      const ks = getKey(), t0 = performance.now();
+      const out = await p.proc(samples, ks, setBar);
+      p.set(out);
+      $(p.play).disabled = $(p.dl).disabled = false;
+      $(p.st).textContent = `${(out.length / FS).toFixed(1)} s · ${((performance.now() - t0) / 1000).toFixed(2)} s to process · key ${$("key").value.length > 24 ? $("key").value.slice(0, 10) + "…" + $("key").value.slice(-6) : $("key").value}` +
+        (out.gain < 1 ? `\nPeak guard: ${(20 * Math.log10(out.gain)).toFixed(1)} dB (descrambled output will be that much quieter; lower the input level to avoid it)` : "");
+      $(p.cv).classList.remove("hide");
+      drawSpec($(p.cv), out);
+    } catch (e) {
+      $(p.st).textContent = e.message || String(e); $(p.st).classList.add("err");
+    } finally {
+      $(p.run).disabled = !samples; $(p.inp).disabled = false;
+    }
+  };
+  const btn = $(p.play), line = $(p.line);
+  p.halt = () => { if (cur && cur.btn === btn) cur.stop(); };
+  btn.onclick = () => {
+    if (cur && cur.btn === btn) { cur.stop(); return; }
+    const a = p.get();
+    if (!a) return;
+    if (cur) cur.stop();
+    const c = actx(), buf = c.createBuffer(1, a.length, FS);
+    buf.copyToChannel(a, 0);
+    const src = c.createBufferSource();
+    src.buffer = buf; src.connect(c.destination);
+    const t0 = c.currentTime + 0.05, dur = a.length / FS;
+    let raf = 0, done = false;
+    const stop = () => {
+      if (done) return;
+      done = true; cancelAnimationFrame(raf);
+      try { src.stop(); } catch (e) {}
+      btn.textContent = "Play"; line.classList.add("hide");
+      if (cur && cur.btn === btn) cur = null;
+    };
+    const frame = () => {
+      const t = c.currentTime - t0;
+      if (t >= dur) { stop(); return; }
+      // spectrogram columns span sample 128 .. len-128 (window centres)
+      const x = Math.min(1, Math.max(0, (t * FS - 128) / Math.max(1, a.length - 256)));
+      line.style.left = (x * 100).toFixed(2) + "%";
+      raf = requestAnimationFrame(frame);
+    };
+    src.onended = stop;
+    src.start(t0);
+    btn.textContent = "Stop"; line.style.left = "0%"; line.classList.remove("hide");
+    cur = { btn, stop };
+    raf = requestAnimationFrame(frame);
+  };
+  $(p.dl).onclick = () => { const a = p.get(); a && download(p.file, a); };
+}
+wire({
+  inp: "scIn", bar: "scBar", line: "scLine", run: "scrambleBtn", play: "scPlay", dl: "scDl", st: "scSt", cv: "scCv", file: "scrambled.wav",
+  empty: "Choose a WAV file.", work: "Scrambling…",
+  set: v => scAudio = v, get: () => scAudio, proc: (s, k, pr) => scramble(s, k, pr)
+});
+wire({
+  inp: "dsIn", bar: "dsBar", line: "dsLine", run: "descrambleBtn", play: "dsPlay", dl: "dsDl", st: "dsSt", cv: "dsCv", file: "descrambled.wav",
+  empty: "Choose a scrambled WAV file.", work: "Descrambling…",
+  set: v => dsAudio = v, get: () => dsAudio,
+  proc: (s, k, pr) => {
+    const M = Math.ceil(s.length / N) * N, pay = new Float32Array(M);
+    pay.set(s.subarray(0, Math.min(M, s.length)));
+    return descramble(pay, k, pr);
+  }
+});
+</script></body></html>
